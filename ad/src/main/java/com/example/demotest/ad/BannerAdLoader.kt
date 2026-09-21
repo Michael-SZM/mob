@@ -1,6 +1,8 @@
 package com.example.demotest.ad
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -18,7 +20,8 @@ import com.bytedance.sdk.openadsdk.TTNativeExpressAd
  * 缓存与重试：加载成功的广告对象统一存入 [AdCacheManager]；SDK 要求渲染回调必须在
  * render 前绑定，因此固定绑定一个无状态桥接器——渲染结果转发给本次 load 的回调，
  * 交互事件在 [attach] 时转发给本次展示传入的 listener，业务回调不随广告进缓存；
- * SDK 真实请求失败后会自动重试，以提升加载成功率。
+ * SDK 真实请求失败后会自动重试，以提升加载成功率；
+ * [autoShow] 进一步封装"命中即挂载、未命中自动加载渲染后挂载"的一站式编排。
  *
  * @param adUnitId GroMore 模板 Banner 广告位 ID（1 开头）
  * @param widthDp 期望模板宽度（dp），须与 GroMore 后台创建代码位时选择的模板尺寸一致
@@ -32,6 +35,9 @@ class BannerAdLoader(
 
     /** SDK 请求失败后的自动重试编排，成功或新一次 load 时复位 */
     private val retryHelper = AdRetryHelper()
+
+    /** autoShow 编排中的主线程调度：加载/渲染回调不保证在主线程，挂载必须切主线程 */
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     /** 本次加载的结果回调，渲染成功/失败后置空；桥接器据此转发渲染结果 */
     private var pendingLoadListener: AdLoadListener? = null
@@ -121,6 +127,8 @@ class BannerAdLoader(
     /**
      * 将渲染成功的 Banner 挂载到容器（会先清空容器，不消耗缓存）
      *
+     * 挂载成功后容器会被置为可见
+     *
      * @param listener 本次展示的事件回调：曝光/点击/关闭
      * @return false 表示缓存未命中或渲染尚未完成（尚未 load、加载失败或渲染未完成）
      */
@@ -135,7 +143,41 @@ class BannerAdLoader(
         activeListener = listener
         container.removeAllViews()
         container.addView(view)
+        container.visibility = View.VISIBLE
         return true
+    }
+
+    /**
+     * 缓存优先自动挂载：命中缓存则立即挂载，未命中或渲染未完成则自动加载、渲染成功后自动挂载
+     *
+     * 把"先查缓存、再回退现场加载"的编排沉淀在 Loader 内部，业务方一次调用即可完成展示链路
+     *
+     * @param container 展示容器（同时作为现场加载的 Context 来源）
+     * @param listener 本次展示的事件回调，展示时绑定
+     * @param loadListener 未命中时现场加载的结果回调（Banner 以渲染成功为加载成功），默认 null 仅内部日志
+     * @return true 表示缓存命中已直接挂载；false 表示未命中、已启动现场加载，展示结果异步回调
+     */
+    fun autoShow(
+        container: ViewGroup,
+        listener: AdEventListener,
+        loadListener: AdLoadListener? = null,
+    ): Boolean {
+        if (attach(container, listener)) {
+            return true
+        }
+        Log.i(TAG, "缓存未命中或渲染未完成，现场加载成功后自动挂载")
+        load(container.context, object : AdLoadListener {
+            override fun onAdError(error: AdError) {
+                Log.w(TAG, "现场加载失败，无法自动挂载: $error")
+                loadListener?.onAdError(error)
+            }
+
+            override fun onAdLoaded() {
+                loadListener?.onAdLoaded()
+                mainHandler.post { attach(container, listener) }
+            }
+        })
+        return false
     }
 
     /** 销毁缓存的 Banner 并释放 SDK 资源，离开页面时必须调用 */

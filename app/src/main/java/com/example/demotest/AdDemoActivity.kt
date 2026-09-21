@@ -64,20 +64,10 @@ class AdDemoActivity : AppCompatActivity() {
         binding.btnPreload.setOnClickListener { preloadAllAds() }
     }
 
-    /** 激励视频缓存优先：命中直接展示（秒开），未命中回退现场加载 */
+    /** 激励视频缓存优先自动展示：命中秒开，未命中则由 Loader 自动加载后展示 */
     private fun showOrLoadRewardedAd() {
-        if (rewardedLoader.show(this, rewardedShowListener())) {
-            appendLog("激励视频缓存命中，直接展示")
-            return
-        }
-        appendLog("激励视频缓存未命中，现场加载...")
-        rewardedLoader.load(
-            this,
-            adLoadListener("激励视频") {
-                postLog("激励视频现场加载成功，调起展示")
-                runOnUiThread { rewardedLoader.show(this@AdDemoActivity, rewardedShowListener()) }
-            },
-        )
+        val fromCache = rewardedLoader.autoShow(this, rewardedShowListener(), adLoadListener("激励视频"))
+        appendLog(if (fromCache) "激励视频缓存命中，直接展示" else "激励视频缓存未命中，现场加载...")
     }
 
     /** 激励视频展示事件回调：在 show 时随本次展示传入，不随广告对象进入缓存 */
@@ -105,20 +95,10 @@ class AdDemoActivity : AppCompatActivity() {
         )
     }
 
-    /** 插屏缓存优先：命中直接展示（秒开），未命中回退现场加载 */
+    /** 插屏缓存优先自动展示：命中秒开，未命中则由 Loader 自动加载后展示 */
     private fun showOrLoadInterstitialAd() {
-        if (interstitialLoader.show(this, interstitialShowListener())) {
-            appendLog("插屏缓存命中，直接展示")
-            return
-        }
-        appendLog("插屏缓存未命中，现场加载...")
-        interstitialLoader.load(
-            this,
-            adLoadListener("插屏") {
-                postLog("插屏现场加载成功，调起展示")
-                runOnUiThread { interstitialLoader.show(this@AdDemoActivity, interstitialShowListener()) }
-            },
-        )
+        val fromCache = interstitialLoader.autoShow(this, interstitialShowListener(), adLoadListener("插屏"))
+        appendLog(if (fromCache) "插屏缓存命中，直接展示" else "插屏缓存未命中，现场加载...")
     }
 
     /** 插屏展示事件回调：在 show 时随本次展示传入，不随广告对象进入缓存 */
@@ -143,24 +123,10 @@ class AdDemoActivity : AppCompatActivity() {
         )
     }
 
-    /** 开屏缓存优先：命中直接挂载展示，未命中回退现场加载 */
+    /** 开屏缓存优先自动展示：命中直接挂载（容器自动置可见），未命中则由 Loader 自动加载后挂载 */
     private fun showOrLoadSplashAd() {
-        if (splashLoader.show(binding.splashContainer, splashShowListener())) {
-            binding.splashContainer.visibility = View.VISIBLE
-            appendLog("开屏缓存命中，直接展示")
-            return
-        }
-        appendLog("开屏缓存未命中，现场加载...")
-        splashLoader.load(
-            this,
-            adLoadListener("开屏") {
-                postLog("开屏现场加载成功，挂载到全屏容器")
-                runOnUiThread {
-                    binding.splashContainer.visibility = View.VISIBLE
-                    splashLoader.show(binding.splashContainer, splashShowListener())
-                }
-            },
-        )
+        val fromCache = splashLoader.autoShow(binding.splashContainer, splashShowListener(), adLoadListener("开屏"))
+        appendLog(if (fromCache) "开屏缓存命中，直接展示" else "开屏缓存未命中，现场加载...")
     }
 
     /** 开屏展示事件回调：在 show 时随本次展示传入，不随广告对象进入缓存 */
@@ -183,24 +149,10 @@ class AdDemoActivity : AppCompatActivity() {
         )
     }
 
-    /** Banner 缓存优先：命中直接挂载，未命中回退现场加载 */
+    /** Banner 缓存优先自动挂载：命中直接挂载（容器自动置可见），未命中则由 Loader 自动加载渲染后挂载 */
     private fun showOrLoadBannerAd() {
-        if (bannerLoader.attach(binding.bannerContainer, bannerShowListener())) {
-            binding.bannerContainer.visibility = View.VISIBLE
-            appendLog("Banner 缓存命中，直接挂载")
-            return
-        }
-        appendLog("Banner 缓存未命中，现场加载...")
-        bannerLoader.load(
-            this,
-            adLoadListener("Banner") {
-                postLog("Banner 现场加载渲染成功，挂载到底部容器")
-                runOnUiThread {
-                    binding.bannerContainer.visibility = View.VISIBLE
-                    bannerLoader.attach(binding.bannerContainer, bannerShowListener())
-                }
-            },
-        )
+        val fromCache = bannerLoader.autoShow(binding.bannerContainer, bannerShowListener(), adLoadListener("Banner"))
+        appendLog(if (fromCache) "Banner 缓存命中，直接挂载" else "Banner 缓存未命中，现场加载...")
     }
 
     /** Banner 展示事件回调：在 attach 时随本次展示传入，不随广告对象进入缓存 */
@@ -235,7 +187,7 @@ class AdDemoActivity : AppCompatActivity() {
      * @param tag 日志前缀（如"激励视频"）
      * @param onLoaded 加载成功后的动作；回调线程不保证在主线程，涉及 UI 或展示请自行切主线程
      */
-    private fun adLoadListener(tag: String, onLoaded: () -> Unit): AdLoadListener = object : AdLoadListener {
+    private fun adLoadListener(tag: String, onLoaded: () -> Unit = {}): AdLoadListener = object : AdLoadListener {
         override fun onAdError(error: AdError) = postLog("$tag 失败: $error")
 
         override fun onAdLoaded() = onLoaded()

@@ -3,6 +3,8 @@ package com.example.demotest.ad
 import android.app.Activity
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.bytedance.sdk.openadsdk.AdSlot
 import com.bytedance.sdk.openadsdk.TTAdConstant
@@ -17,7 +19,8 @@ import com.bytedance.sdk.openadsdk.TTRewardVideoAd
  *
  * 缓存与重试：加载成功的广告对象统一存入 [AdCacheManager]（可预加载多条），
  * [show] 从缓存按 FIFO 取一条（先缓存先消耗）；展示监听在 [show] 时随展示绑定，
- * 不随广告对象进入缓存；SDK 真实请求失败后会自动重试，以提升加载成功率。
+ * 不随广告对象进入缓存；SDK 真实请求失败后会自动重试，以提升加载成功率；
+ * [autoShow] 进一步封装"命中即展示、未命中自动加载后展示"的一站式编排。
  *
  * @param adUnitId GroMore 激励视频广告位 ID（1 开头）
  * @param userId 服务端奖励验证场景下的用户唯一标识，会在奖励回调 URL 中透传，非必填
@@ -33,6 +36,9 @@ class RewardedAdLoader(
 
     /** SDK 请求失败后的自动重试编排，成功或新一次 load 时复位 */
     private val retryHelper = AdRetryHelper()
+
+    /** autoShow 编排中的主线程调度：加载回调不保证在主线程，展示必须切主线程 */
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     /**
      * 加载激励视频（仅入缓存，不绑定展示监听）
@@ -150,6 +156,38 @@ class RewardedAdLoader(
         ad.setRewardAdInteractionListener(buildInteractionListener(listener))
         ad.showRewardVideoAd(activity)
         return true
+    }
+
+    /**
+     * 缓存优先自动展示：命中缓存则立即展示，未命中则自动发起现场加载、加载成功后自动展示
+     *
+     * 把"先查缓存、再回退现场加载"的编排沉淀在 Loader 内部，业务方一次调用即可完成展示链路
+     *
+     * @param listener 本次展示的事件回调，展示时绑定
+     * @param loadListener 未命中时现场加载的结果回调，默认 null 仅内部日志
+     * @return true 表示缓存命中已直接展示；false 表示未命中、已启动现场加载，展示结果异步回调
+     */
+    fun autoShow(
+        activity: Activity,
+        listener: RewardedAdEventListener,
+        loadListener: AdLoadListener? = null,
+    ): Boolean {
+        if (show(activity, listener)) {
+            return true
+        }
+        Log.i(TAG, "缓存未命中，现场加载成功后自动展示")
+        load(activity, object : AdLoadListener {
+            override fun onAdError(error: AdError) {
+                Log.w(TAG, "现场加载失败，无法自动展示: $error")
+                loadListener?.onAdError(error)
+            }
+
+            override fun onAdLoaded() {
+                loadListener?.onAdLoaded()
+                mainHandler.post { show(activity, listener) }
+            }
+        })
+        return false
     }
 
     /** 释放缓存中的激励视频引用，并取消尚未执行的自动重试 */
