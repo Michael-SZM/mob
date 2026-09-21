@@ -28,7 +28,7 @@ import kotlin.random.Random
 /**
  * Mock 广告平台适配器（演示用，无真实 SDK）
  *
- * 仅实现 :ad 模块的 [AdPlatform] 协议，与真实平台（如 gromore 包的 GroMorePlatform）
+ * 仅实现 :ad 模块的 [AdPlatform] 协议，与真实平台（如 :ad-gromore 模块的 GroMorePlatform）
  * 拥有完全相同的接入方式，用于演示：
  * 1. 多平台同时接入：与 GroMore 一起注册进 AdConfig.platforms；
  * 2. 竞价 × 瀑布流双管道赛跑：模拟真实请求耗时与出价（[baseEcpm] + 每次 0~15 分随机浮动），

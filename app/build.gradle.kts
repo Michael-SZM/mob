@@ -65,6 +65,9 @@ android {
 
 dependencies {
     implementation(project(":ad"))
+    // GroMore 平台实现按需引入：移除本行即不再打包穿山甲 SDK（so 体积），减小包体积；
+    // 业务如接入其他平台，只需替换为对应平台模块
+    implementation(project(":ad-gromore"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)

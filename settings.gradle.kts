@@ -25,4 +25,6 @@ dependencyResolutionManagement {
 rootProject.name = "DemoTest"
 include(":app")
 include(":ad")
+// GroMore 平台实现模块：业务按需引入（不引入则不打包穿山甲 SDK）
+include(":ad-gromore")
  

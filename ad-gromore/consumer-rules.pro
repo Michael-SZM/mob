@@ -1,4 +1,4 @@
-# 穿山甲 GroMore 融合 SDK 混淆规则（随 :ad 模块消费，宿主无需重复配置）
+# 穿山甲 GroMore 融合 SDK 混淆规则（随 :ad-gromore 平台模块消费，宿主无需重复配置）
 -keep class com.bytedance.sdk.openadsdk.** { *; }
 -keep class com.bytedance.mobsec.metasec.ml.** { *; }
 -keep class com.bytedance.dr.** { *; }

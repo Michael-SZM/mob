@@ -11,10 +11,6 @@ android {
 
     defaultConfig {
         minSdk = 24
-
-        // 穿山甲 GroMore 融合 SDK 仅提供 arm64-v8a 架构 so 库，
-        // 与宿主 app 的全 ABI 配置取并集打包，其余架构设备上广告能力不可用
-        consumerProguardFiles("consumer-rules.pro")
     }
 
     buildTypes {
@@ -35,11 +31,5 @@ android {
     }
 }
 
-dependencies {
-    // GroMore 融合 SDK：以 implementation 隔离，宿主只能访问本模块的协议类型（api 包），
-    // 无法直接依赖具体广告 SDK，从而支持横向替换/新增广告平台
-    implementation(libs.pangle.ads.sdk)
-    // 官方工程配置要求：SDK 下载库依赖项
-    implementation(libs.okhttp)
-    implementation(libs.androidx.appcompat)
-}
+// 本模块为纯协议与编排层（api 包），不依赖任何广告 SDK：
+// 具体平台实现（如 GroMore）在独立平台模块（:ad-gromore）中提供，业务按需引入以控制包体积
