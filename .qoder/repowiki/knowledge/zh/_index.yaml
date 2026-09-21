@@ -1,0 +1,31 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: Q0DeR-MaG1C-BrAnCh-Fo2-NoN-GiT-Or-No-C0MmIt
+nodes_managed: true
+exported_at: "2026-08-28T09:51:10Z"
+modules:
+    "":
+        dir_name: DemoTest Android 工程根
+        title: DemoTest Android 工程根
+        scope:
+            - build.gradle.kts
+            - settings.gradle.kts
+            - gradle.properties
+            - gradlew.bat
+            - .gitignore
+            - gradlew
+        source_files: []
+        children:
+            - app
+        depends_on: []
+        related_to: []
+    app:
+        dir_name: DemoTest Android 应用主模块
+        title: DemoTest Android 应用主模块
+        scope:
+            - app/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

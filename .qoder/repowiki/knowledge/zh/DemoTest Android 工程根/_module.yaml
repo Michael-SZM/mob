@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: ""
+title: DemoTest Android 工程根
+scope:
+    - build.gradle.kts
+    - settings.gradle.kts
+    - gradle.properties
+    - gradlew.bat
+    - .gitignore
+    - gradlew
+source_files: []
+depends_on: []
+related_to: []

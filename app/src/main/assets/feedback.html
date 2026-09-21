@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>意见反馈</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #F7F8FA;
+            color: #333333;
+        }
+
+        body {
+            padding-bottom: 100px;
+        }
+
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 48px;
+            padding: 0 12px;
+            background-color: #FFF5F5;
+        }
+
+        .header-back {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: #333333;
+        }
+
+        .header-title {
+            font-size: 17px;
+            font-weight: 600;
+            color: #333333;
+        }
+
+        .header-action {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 5px 10px;
+            border: 1px solid #FF5A6E;
+            border-radius: 16px;
+            font-size: 13px;
+            color: #FF5A6E;
+            background-color: #FFFFFF;
+        }
+
+        .header-action::before {
+            content: "✉";
+            font-size: 12px;
+        }
+
+        .form {
+            padding: 12px;
+        }
+
+        .card {
+            background-color: #FFFFFF;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .form-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 44px;
+        }
+
+        .form-row + .form-row {
+            border-top: 1px solid #F2F2F2;
+            margin-top: 12px;
+            padding-top: 12px;
+        }
+
+        .label {
+            font-size: 15px;
+            font-weight: 600;
+            color: #333333;
+        }
+
+        .label.required::before {
+            content: "*";
+            color: #FF5A6E;
+            margin-right: 2px;
+        }
+
+        .value {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 14px;
+            color: #999999;
+        }
+
+        .value::after {
+            content: "›";
+            font-size: 18px;
+            color: #CCCCCC;
+        }
+
+        .textarea-box {
+            margin-top: 12px;
+            background-color: #F7F8FA;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .textarea-box textarea {
+            width: 100%;
+            min-height: 120px;
+            border: none;
+            outline: none;
+            resize: none;
+            background: transparent;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #333333;
+            font-family: inherit;
+        }
+
+        .textarea-box textarea::placeholder {
+            color: #CCCCCC;
+        }
+
+        .counter {
+            text-align: right;
+            font-size: 12px;
+            color: #CCCCCC;
+            margin-top: 6px;
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .section-title .label {
+            font-weight: 600;
+        }
+
+        .hint {
+            font-size: 13px;
+            color: #999999;
+        }
+
+        .upload-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .upload-item {
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            background-color: #F7F8FA;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #CCCCCC;
+            font-size: 12px;
+            border: 1px dashed #E0E0E0;
+        }
+
+        .upload-item .plus {
+            font-size: 28px;
+            line-height: 1;
+            margin-bottom: 4px;
+            color: #D9D9D9;
+        }
+
+        .input-box {
+            margin-top: 12px;
+            background-color: #F7F8FA;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .input-box input {
+            width: 100%;
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: 14px;
+            color: #333333;
+            font-family: inherit;
+        }
+
+        .input-box input::placeholder {
+            color: #CCCCCC;
+        }
+
+        .footer {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 100;
+            padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+            background-color: #FFFFFF;
+            box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.04);
+        }
+
+        .submit-btn {
+            width: 100%;
+            height: 46px;
+            border: none;
+            border-radius: 23px;
+            background: linear-gradient(90deg, #FF7A8C 0%, #FF5A6E 100%);
+            color: #FFFFFF;
+            font-size: 16px;
+            font-weight: 500;
+            outline: none;
+        }
+
+        .submit-btn:active {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-back">‹</div>
+        <div class="header-title">意见反馈</div>
+        <div class="header-action">我的反馈</div>
+    </div>
+
+    <div class="form">
+        <div class="card">
+            <div class="form-row">
+                <div class="label required">请选择问题场景</div>
+                <div class="value">问题投诉</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="label required">请描述具体问题</div>
+            <div class="textarea-box">
+                <textarea id="descInput" placeholder="请输入你的问题描述或建议" maxlength="500"></textarea>
+                <div class="counter"><span id="descCounter">0</span>/500</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="section-title">
+                <div class="label">问题截图</div>
+                <div class="hint">不超过3张</div>
+            </div>
+            <div class="upload-grid">
+                <div class="upload-item">
+                    <div class="plus">+</div>
+                    <div>上传图片</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="label required">联系方式</div>
+            <div class="input-box">
+                <input id="contactInput" type="tel" placeholder="请输入手机号" maxlength="11">
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="submit-btn" id="submitBtn">提交反馈</button>
+    </div>
+
+    <script>
+        (function () {
+            var descInput = document.getElementById('descInput');
+            var descCounter = document.getElementById('descCounter');
+            var contactInput = document.getElementById('contactInput');
+
+            function updateCounter() {
+                descCounter.textContent = (descInput.value || '').length;
+            }
+
+            descInput.addEventListener('input', updateCounter);
+
+            function onFocusScroll(element) {
+                setTimeout(function () {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 300);
+            }
+
+            descInput.addEventListener('focus', function () {
+                onFocusScroll(descInput);
+            });
+
+            contactInput.addEventListener('focus', function () {
+                onFocusScroll(contactInput);
+            });
+
+            document.getElementById('submitBtn').addEventListener('click', function () {
+                var desc = (descInput.value || '').trim();
+                var contact = (contactInput.value || '').trim();
+                if (!desc) {
+                    alert('请描述具体问题');
+                    return;
+                }
+                if (!contact) {
+                    alert('请输入联系方式');
+                    return;
+                }
+                alert('提交成功');
+            });
+        })();
+    </script>
+</body>
+</html>
