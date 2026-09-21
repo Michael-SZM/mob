@@ -130,10 +130,15 @@ class BannerAdLoader(
      * 挂载成功后容器会被置为可见
      *
      * @param listener 本次展示的事件回调：曝光/点击/关闭
+     * @param strategy 本次取用缓存的覆盖策略，null 表示使用 AdConfig 配置的默认策略
      * @return false 表示缓存未命中或渲染尚未完成（尚未 load、加载失败或渲染未完成）
      */
-    fun attach(container: ViewGroup, listener: AdEventListener): Boolean {
-        val ad = AdCacheManager.peek<TTNativeExpressAd>(AdType.BANNER)
+    fun attach(
+        container: ViewGroup,
+        listener: AdEventListener,
+        strategy: AdSelectStrategy? = null,
+    ): Boolean {
+        val ad = AdCacheManager.peek<TTNativeExpressAd>(AdType.BANNER, strategy)
         val view = ad?.expressAdView
         if (view == null) {
             Log.w(TAG, "挂载失败：Banner 缓存未命中或渲染未完成")
@@ -154,15 +159,17 @@ class BannerAdLoader(
      *
      * @param container 展示容器（同时作为现场加载的 Context 来源）
      * @param listener 本次展示的事件回调，展示时绑定
+     * @param strategy 本次取用缓存的覆盖策略，null 表示使用 AdConfig 配置的默认策略
      * @param loadListener 未命中时现场加载的结果回调（Banner 以渲染成功为加载成功），默认 null 仅内部日志
      * @return true 表示缓存命中已直接挂载；false 表示未命中、已启动现场加载，展示结果异步回调
      */
     fun autoShow(
         container: ViewGroup,
         listener: AdEventListener,
+        strategy: AdSelectStrategy? = null,
         loadListener: AdLoadListener? = null,
     ): Boolean {
-        if (attach(container, listener)) {
+        if (attach(container, listener, strategy)) {
             return true
         }
         Log.i(TAG, "缓存未命中或渲染未完成，现场加载成功后自动挂载")
@@ -174,7 +181,7 @@ class BannerAdLoader(
 
             override fun onAdLoaded() {
                 loadListener?.onAdLoaded()
-                mainHandler.post { attach(container, listener) }
+                mainHandler.post { attach(container, listener, strategy) }
             }
         })
         return false

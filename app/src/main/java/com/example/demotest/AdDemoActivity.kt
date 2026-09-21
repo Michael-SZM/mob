@@ -9,6 +9,7 @@ import com.example.demotest.ad.AdConfig
 import com.example.demotest.ad.AdEventListener
 import com.example.demotest.ad.AdError
 import com.example.demotest.ad.AdLoadListener
+import com.example.demotest.ad.AdSelectStrategy
 import com.example.demotest.ad.AdType
 import com.example.demotest.ad.BannerAdLoader
 import com.example.demotest.ad.GroMoreAdManager
@@ -67,10 +68,12 @@ class AdDemoActivity : AppCompatActivity() {
     /** 激励视频缓存优先自动展示：命中秒开，未命中则由 Loader 自动加载后展示 */
     private fun showOrLoadRewardedAd() {
         // autoReloadOnClose=true：广告关闭消耗后由 Loader 自动补位加载下一条；传 false 则关闭该行为
+        // strategy 按次覆盖：本次改用"出价最高"策略（不传则用 AdConfig 配置的默认策略）
         val fromCache = rewardedLoader.autoShow(
             this,
             rewardedShowListener(),
             autoReloadOnClose = true,
+            strategy = AdSelectStrategy.HighestEcpm,
             loadListener = adLoadListener("激励视频"),
         )
         appendLog(if (fromCache) "激励视频缓存命中，直接展示" else "激励视频缓存未命中，现场加载...")
@@ -131,7 +134,11 @@ class AdDemoActivity : AppCompatActivity() {
 
     /** 开屏缓存优先自动展示：命中直接挂载（容器自动置可见），未命中则由 Loader 自动加载后挂载 */
     private fun showOrLoadSplashAd() {
-        val fromCache = splashLoader.autoShow(binding.splashContainer, splashShowListener(), adLoadListener("开屏"))
+        val fromCache = splashLoader.autoShow(
+            binding.splashContainer,
+            splashShowListener(),
+            loadListener = adLoadListener("开屏"),
+        )
         appendLog(if (fromCache) "开屏缓存命中，直接展示" else "开屏缓存未命中，现场加载...")
     }
 
@@ -157,7 +164,11 @@ class AdDemoActivity : AppCompatActivity() {
 
     /** Banner 缓存优先自动挂载：命中直接挂载（容器自动置可见），未命中则由 Loader 自动加载渲染后挂载 */
     private fun showOrLoadBannerAd() {
-        val fromCache = bannerLoader.autoShow(binding.bannerContainer, bannerShowListener(), adLoadListener("Banner"))
+        val fromCache = bannerLoader.autoShow(
+            binding.bannerContainer,
+            bannerShowListener(),
+            loadListener = adLoadListener("Banner"),
+        )
         appendLog(if (fromCache) "Banner 缓存命中，直接挂载" else "Banner 缓存未命中，现场加载...")
     }
 
@@ -238,6 +249,8 @@ class AdDemoActivity : AppCompatActivity() {
             rewardedAdUnitId = "",
             interstitialAdUnitId = "",
             bannerAdUnitId = "",
+            // 缓存取用策略：默认先进先出；改为 AdSelectStrategy.HighestEcpm 即全局按出价最高取用
+            selectStrategy = AdSelectStrategy.Fifo,
         )
     }
 }

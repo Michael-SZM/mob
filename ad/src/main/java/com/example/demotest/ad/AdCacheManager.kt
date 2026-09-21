@@ -16,13 +16,14 @@ import android.util.Log
  *   可用 [setMaxCacheSize] 扩容实现"预加载多条"（如激励视频常配 2~3 条）；
  * - 过期保护：广告对象加载后有存活时效（官方建议 30 分钟内展示完毕），
  *   [take]/[peek]/[size] 会顺带清理并忽略过期条目，避免展示失效广告；
- * - FIFO 取用：同类型缓存多条时优先返回最早缓存的广告（也最先过期），
- *   与 [put] 满容量时淘汰最旧条目对称，保证缓存池滚动消耗、无条目饿死浪费。
+ * - 取用策略：同类型缓存多条时，由 [AdSelectStrategy] 从全部未过期候选中选出要使用的一条；
+ *   默认 [AdSelectStrategy.Fifo] 先进先出（与 [put] 满容量淘汰最旧条目对称，无条目饿死浪费），
+ *   可在 AdConfig 中配置默认策略、show/attach 时按次覆盖或传入自定义策略，见 [setDefaultStrategy]。
  */
 object AdCacheManager {
 
-    /** 单条缓存条目：广告对象与过期时间戳 */
-    private class CacheEntry(val ad: Any, val expireAtMillis: Long) {
+    /** 单条缓存条目：广告对象、过期时间戳与入缓存时提取的最优出价 */
+    private class CacheEntry(val ad: Any, val expireAtMillis: Long, val ecpm: Double?) {
         val isExpired: Boolean get() = SystemClock.elapsedRealtime() >= expireAtMillis
     }
 
@@ -37,13 +38,17 @@ object AdCacheManager {
     /** 各类型过期时长（毫秒），未配置时取 [DEFAULT_EXPIRE_MILLIS] */
     private val expireMillis = mutableMapOf<AdType, Long>()
 
+    /** 全局默认的广告选择策略：show/attach 未按次覆盖时生效，默认先进先出 */
+    private var defaultStrategy: AdSelectStrategy = AdSelectStrategy.Fifo
+
     /**
      * 缓存一条加载成功的广告对象，超出容量时淘汰最早缓存的条目
      */
     fun put(type: AdType, ad: Any) {
         synchronized(lock) {
             val queue = caches.getOrPut(type) { ArrayDeque() }
-            queue.addLast(CacheEntry(ad, SystemClock.elapsedRealtime() + expireOf(type)))
+            // 入缓存时提取出价，供“出价最高”等策略在取用时比较（读取不到为 null）
+            queue.addLast(CacheEntry(ad, SystemClock.elapsedRealtime() + expireOf(type), extractEcpmOrNull(ad)))
             while (queue.size > maxSizeOf(type)) {
                 queue.removeFirst()
             }
@@ -52,45 +57,36 @@ object AdCacheManager {
     }
 
     /**
-     * 取出某类型最早缓存的一条有效广告（消耗缓存，FIFO）
+     * 取出某类型缓存中被策略选中的一条有效广告（消耗缓存）
      *
+     * 候选为该类型全部未过期条目，选择规则由 [strategy] 或全局默认策略决定
+     *
+     * @param strategy 本次取用的覆盖策略，null 表示使用全局默认策略（见 [setDefaultStrategy]）
      * @return null 表示无有效缓存（尚未 load、已被展示消耗或缓存过期）
      */
-    fun <T : Any> take(type: AdType): T? {
+    fun <T : Any> take(type: AdType, strategy: AdSelectStrategy? = null): T? {
         return synchronized(lock) {
             val queue = caches[type] ?: return@synchronized null
-            // 从队头（最早缓存、最先过期）开始取用，顺带清理过期条目
-            while (queue.isNotEmpty()) {
-                val entry = queue.removeFirst()
-                if (!entry.isExpired) {
-                    @Suppress("UNCHECKED_CAST")
-                    return@synchronized entry.ad as T
-                }
-                Log.i(TAG, "丢弃过期缓存: type=${type.name}")
-            }
-            null
+            val entry = selectEntryLocked(queue, type, strategy) ?: return@synchronized null
+            queue.remove(entry)
+            @Suppress("UNCHECKED_CAST")
+            entry.ad as T
         }
     }
 
     /**
-     * 查看某类型最早缓存的一条有效广告（不消耗缓存，与 [take] 取用顺序一致），
+     * 查看某类型缓存中被策略选中的一条有效广告（不消耗缓存，与 [take] 选择规则一致），
      * 供 Banner 等页面级展示场景使用
      *
+     * @param strategy 本次取用的覆盖策略，null 表示使用全局默认策略（见 [setDefaultStrategy]）
      * @return null 表示无有效缓存或渲染尚未完成
      */
-    fun <T : Any> peek(type: AdType): T? {
+    fun <T : Any> peek(type: AdType, strategy: AdSelectStrategy? = null): T? {
         return synchronized(lock) {
             val queue = caches[type] ?: return@synchronized null
-            while (queue.isNotEmpty()) {
-                val entry = queue.first()
-                if (!entry.isExpired) {
-                    @Suppress("UNCHECKED_CAST")
-                    return@synchronized entry.ad as T
-                }
-                queue.removeFirst()
-                Log.i(TAG, "丢弃过期缓存: type=${type.name}")
-            }
-            null
+            val entry = selectEntryLocked(queue, type, strategy) ?: return@synchronized null
+            @Suppress("UNCHECKED_CAST")
+            entry.ad as T
         }
     }
 
@@ -148,6 +144,58 @@ object AdCacheManager {
     fun setExpireMillis(type: AdType, expireMillis: Long) {
         require(expireMillis > 0) { "expireMillis 必须 > 0" }
         synchronized(lock) { this.expireMillis[type] = expireMillis }
+    }
+
+    /**
+     * 设置全局默认的广告选择策略
+     *
+     * 一般在初始化时按 AdConfig.selectStrategy 注入；show/attach 传入 strategy 可按次覆盖
+     */
+    fun setDefaultStrategy(strategy: AdSelectStrategy) {
+        synchronized(lock) { defaultStrategy = strategy }
+    }
+
+    /**
+     * 在锁内按策略从队列选出条目：先清理过期条目，再由策略从候选中选择
+     *
+     * @return null 表示无未过期候选或策略未选中任何候选
+     */
+    private fun selectEntryLocked(
+        queue: ArrayDeque<CacheEntry>,
+        type: AdType,
+        strategy: AdSelectStrategy?,
+    ): CacheEntry? {
+        purgeExpiredLocked(queue, type)
+        if (queue.isEmpty()) {
+            return null
+        }
+        val effectiveStrategy = strategy ?: defaultStrategy
+        val candidates = queue.map { AdCandidate(it.ad, it.ecpm) }
+        val selected = effectiveStrategy.select(candidates)
+        if (selected == null) {
+            Log.i(TAG, "策略未选中候选: type=${type.name}, 候选${candidates.size}条")
+            return null
+        }
+        // 策略应返回候选之一（AdCandidate 构造器 internal，模块外无法伪造）；
+        // 防御性处理：异常实现返回列表外对象时回退为最早一条
+        val index = candidates.indexOfFirst { it === selected }
+        if (index < 0) {
+            Log.w(TAG, "策略返回的候选不在当前候选中，回退为最早一条: type=${type.name}")
+            return queue.first()
+        }
+        Log.i(TAG, "策略选中缓存: type=${type.name}, 第${index + 1}/${candidates.size}条, ecpm=${queue[index].ecpm}")
+        return queue[index]
+    }
+
+    /** 在锁内清理队列中的过期条目 */
+    private fun purgeExpiredLocked(queue: ArrayDeque<CacheEntry>, type: AdType) {
+        val iterator = queue.iterator()
+        while (iterator.hasNext()) {
+            if (iterator.next().isExpired) {
+                iterator.remove()
+                Log.i(TAG, "丢弃过期缓存: type=${type.name}")
+            }
+        }
     }
 
     private fun maxSizeOf(type: AdType): Int = maxSizes[type] ?: DEFAULT_MAX_CACHE_SIZE

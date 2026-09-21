@@ -40,6 +40,8 @@ object GroMoreAdManager {
             onResult?.invoke(Result.failure(IllegalArgumentException("appId 不能为空，请在穿山甲 GroMore 后台申请")))
             return
         }
+        // 初始化时把 AdConfig 配置的缓存取用策略注入为全局默认（show/attach 可按次覆盖）
+        AdCacheManager.setDefaultStrategy(config.selectStrategy)
         val ttConfig = TTAdConfig.Builder()
             .appId(config.appId)
             .appName(config.appName)

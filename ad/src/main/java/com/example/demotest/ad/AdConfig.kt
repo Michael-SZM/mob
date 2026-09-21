@@ -10,6 +10,8 @@ package com.example.demotest.ad
  * @param rewardedAdUnitId 激励视频广告位 ID（GroMore 广告位维度，1 开头）
  * @param interstitialAdUnitId 插屏/全屏视频广告位 ID（GroMore 广告位维度，1 开头）
  * @param bannerAdUnitId 模板 Banner 广告位 ID（GroMore 广告位维度，1 开头）
+ * @param selectStrategy 缓存取用策略：同类型存在多条候选广告时选中哪条展示（默认先进先出）；
+ *                       初始化时注入为全局默认，可在 show/attach 时按次覆盖或传入自定义策略
  *
  * 注意：聚合场景下请求传的是"广告位 ID"而非各 ADN 的"代码位 ID"，
  * SDK 会按 GroMore 后台瀑布流配置自行请求对应代码位
@@ -22,4 +24,5 @@ data class AdConfig(
     val rewardedAdUnitId: String = "",
     val interstitialAdUnitId: String = "",
     val bannerAdUnitId: String = "",
+    val selectStrategy: AdSelectStrategy = AdSelectStrategy.Fifo,
 )

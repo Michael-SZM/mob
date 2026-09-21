@@ -18,7 +18,7 @@ import com.bytedance.sdk.openadsdk.TTAdNative
  * 展示完毕（onAdClosed）后业务方自行隐藏容器并进入主界面。
  *
  * 缓存与重试：加载成功的广告对象统一存入 [AdCacheManager]，
- * [show] 从缓存按 FIFO 取一条（先缓存先消耗）；展示监听在 [show] 时随展示绑定，
+ * [show] 从缓存按 [AdSelectStrategy] 取一条（默认先进先出，可配置或按次覆盖）；展示监听在 [show] 时随展示绑定，
  * 不随广告对象进入缓存；SDK 真实请求失败后会自动重试，以提升加载成功率；
  * [autoShow] 进一步封装"命中即展示、未命中自动加载后展示"的一站式编排。
  *
@@ -111,10 +111,15 @@ class SplashAdLoader(
      * 挂载成功后容器会被置为可见
      *
      * @param listener 本次展示的事件回调：曝光/点击/关闭
+     * @param strategy 本次取用缓存的覆盖策略，null 表示使用 AdConfig 配置的默认策略
      * @return false 表示缓存未命中（尚未 load、已被展示消耗或缓存过期）
      */
-    fun show(container: ViewGroup, listener: SplashAdEventListener): Boolean {
-        val ad = AdCacheManager.take<CSJSplashAd>(AdType.SPLASH)
+    fun show(
+        container: ViewGroup,
+        listener: SplashAdEventListener,
+        strategy: AdSelectStrategy? = null,
+    ): Boolean {
+        val ad = AdCacheManager.take<CSJSplashAd>(AdType.SPLASH, strategy)
         if (ad == null) {
             Log.w(TAG, "展示失败：开屏缓存未命中")
             return false
@@ -132,15 +137,17 @@ class SplashAdLoader(
      *
      * @param container 全屏展示容器（同时作为现场加载的 Context 来源）
      * @param listener 本次展示的事件回调，展示时绑定
+     * @param strategy 本次取用缓存的覆盖策略，null 表示使用 AdConfig 配置的默认策略
      * @param loadListener 未命中时现场加载的结果回调，默认 null 仅内部日志
      * @return true 表示缓存命中已直接展示；false 表示未命中、已启动现场加载，展示结果异步回调
      */
     fun autoShow(
         container: ViewGroup,
         listener: SplashAdEventListener,
+        strategy: AdSelectStrategy? = null,
         loadListener: AdLoadListener? = null,
     ): Boolean {
-        if (show(container, listener)) {
+        if (show(container, listener, strategy)) {
             return true
         }
         Log.i(TAG, "缓存未命中，现场加载成功后自动展示")
@@ -152,7 +159,7 @@ class SplashAdLoader(
 
             override fun onAdLoaded() {
                 loadListener?.onAdLoaded()
-                mainHandler.post { show(container, listener) }
+                mainHandler.post { show(container, listener, strategy) }
             }
         })
         return false

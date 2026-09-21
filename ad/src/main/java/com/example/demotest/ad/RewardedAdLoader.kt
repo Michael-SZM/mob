@@ -18,7 +18,7 @@ import com.bytedance.sdk.openadsdk.TTRewardVideoAd
  * 业务方在 [AdEventListener.onAdClosed] 后需重新 [load] 获取新广告。
  *
  * 缓存与重试：加载成功的广告对象统一存入 [AdCacheManager]（可预加载多条），
- * [show] 从缓存按 FIFO 取一条（先缓存先消耗）；展示监听在 [show] 时随展示绑定，
+ * [show] 从缓存按 [AdSelectStrategy] 取一条（默认先进先出，可配置或按次覆盖）；展示监听在 [show] 时随展示绑定，
  * 不随广告对象进入缓存；SDK 真实请求失败后会自动重试，以提升加载成功率；
  * [autoShow] 进一步封装"命中即展示、未命中自动加载后展示"的一站式编排；
  * show/autoShow 的 autoReloadOnClose 控制广告关闭（已消耗）后是否自动补位加载下一条。
@@ -157,14 +157,16 @@ class RewardedAdLoader(
      *
      * @param listener 本次展示的事件回调：曝光/点击/关闭/激励发放
      * @param autoReloadOnClose true 表示广告关闭（已消耗）后自动补位加载下一条，维持缓存水位
+     * @param strategy 本次取用缓存的覆盖策略，null 表示使用 AdConfig 配置的默认策略
      * @return false 表示缓存未命中（尚未 load、已被展示消耗或缓存过期）
      */
     fun show(
         activity: Activity,
         listener: RewardedAdEventListener,
         autoReloadOnClose: Boolean = false,
+        strategy: AdSelectStrategy? = null,
     ): Boolean {
-        val ad = AdCacheManager.take<TTRewardVideoAd>(AdType.REWARDED)
+        val ad = AdCacheManager.take<TTRewardVideoAd>(AdType.REWARDED, strategy)
         if (ad == null) {
             Log.w(TAG, "展示失败：激励视频缓存未命中")
             return false
@@ -184,6 +186,7 @@ class RewardedAdLoader(
      *
      * @param listener 本次展示的事件回调，展示时绑定
      * @param autoReloadOnClose true 表示广告关闭（已消耗）后自动补位加载下一条，维持缓存水位
+     * @param strategy 本次取用缓存的覆盖策略，null 表示使用 AdConfig 配置的默认策略
      * @param loadListener 未命中时现场加载的结果回调，默认 null 仅内部日志
      * @return true 表示缓存命中已直接展示；false 表示未命中、已启动现场加载，展示结果异步回调
      */
@@ -191,9 +194,10 @@ class RewardedAdLoader(
         activity: Activity,
         listener: RewardedAdEventListener,
         autoReloadOnClose: Boolean = true,
+        strategy: AdSelectStrategy? = null,
         loadListener: AdLoadListener? = null,
     ): Boolean {
-        if (show(activity, listener, autoReloadOnClose)) {
+        if (show(activity, listener, autoReloadOnClose, strategy)) {
             return true
         }
         Log.i(TAG, "缓存未命中，现场加载成功后自动展示")
@@ -205,7 +209,7 @@ class RewardedAdLoader(
 
             override fun onAdLoaded() {
                 loadListener?.onAdLoaded()
-                mainHandler.post { show(activity, listener, autoReloadOnClose) }
+                mainHandler.post { show(activity, listener, autoReloadOnClose, strategy) }
             }
         })
         return false
