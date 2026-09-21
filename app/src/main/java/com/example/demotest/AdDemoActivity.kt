@@ -66,7 +66,13 @@ class AdDemoActivity : AppCompatActivity() {
 
     /** 激励视频缓存优先自动展示：命中秒开，未命中则由 Loader 自动加载后展示 */
     private fun showOrLoadRewardedAd() {
-        val fromCache = rewardedLoader.autoShow(this, rewardedShowListener(), adLoadListener("激励视频"))
+        // autoReloadOnClose=true：广告关闭消耗后由 Loader 自动补位加载下一条；传 false 则关闭该行为
+        val fromCache = rewardedLoader.autoShow(
+            this,
+            rewardedShowListener(),
+            autoReloadOnClose = true,
+            loadListener = adLoadListener("激励视频"),
+        )
         appendLog(if (fromCache) "激励视频缓存命中，直接展示" else "激励视频缓存未命中，现场加载...")
     }
 
@@ -74,10 +80,7 @@ class AdDemoActivity : AppCompatActivity() {
     private fun rewardedShowListener(): RewardedAdEventListener = object : RewardedAdEventListener {
         override fun onAdShown() = postLog("激励视频曝光")
 
-        override fun onAdClosed() {
-            postLog("激励视频关闭（广告已消耗），自动补位预加载下一条")
-            preloadRewardedAd()
-        }
+        override fun onAdClosed() = postLog("激励视频关闭（广告已消耗）")
 
         override fun onRewarded(isValid: Boolean, rewardName: String?, rewardAmount: Int) =
             postLog("激励发放: isValid=$isValid, 奖励=$rewardName x$rewardAmount")
@@ -97,7 +100,13 @@ class AdDemoActivity : AppCompatActivity() {
 
     /** 插屏缓存优先自动展示：命中秒开，未命中则由 Loader 自动加载后展示 */
     private fun showOrLoadInterstitialAd() {
-        val fromCache = interstitialLoader.autoShow(this, interstitialShowListener(), adLoadListener("插屏"))
+        // autoReloadOnClose=true：广告关闭消耗后由 Loader 自动补位加载下一条；传 false 则关闭该行为
+        val fromCache = interstitialLoader.autoShow(
+            this,
+            interstitialShowListener(),
+            autoReloadOnClose = true,
+            loadListener = adLoadListener("插屏"),
+        )
         appendLog(if (fromCache) "插屏缓存命中，直接展示" else "插屏缓存未命中，现场加载...")
     }
 
@@ -105,10 +114,7 @@ class AdDemoActivity : AppCompatActivity() {
     private fun interstitialShowListener(): InterstitialAdEventListener = object : InterstitialAdEventListener {
         override fun onAdShown() = postLog("插屏曝光")
 
-        override fun onAdClosed() {
-            postLog("插屏关闭（广告已消耗），自动补位预加载下一条")
-            preloadInterstitialAd()
-        }
+        override fun onAdClosed() = postLog("插屏关闭（广告已消耗）")
 
         override fun onVideoCompleted() = postLog("插屏视频播放完毕")
     }

@@ -19,7 +19,8 @@ import com.bytedance.sdk.openadsdk.TTFullScreenVideoAd
  * 缓存与重试：加载成功的广告对象统一存入 [AdCacheManager]（可预加载多条），
  * [show] 从缓存按 FIFO 取一条（先缓存先消耗）；展示监听在 [show] 时随展示绑定，
  * 不随广告对象进入缓存；SDK 真实请求失败后会自动重试，以提升加载成功率；
- * [autoShow] 进一步封装"命中即展示、未命中自动加载后展示"的一站式编排。
+ * [autoShow] 进一步封装"命中即展示、未命中自动加载后展示"的一站式编排；
+ * show/autoShow 的 autoReloadOnClose 控制广告关闭（已消耗）后是否自动补位加载下一条。
  *
  * @param adUnitId GroMore 插屏/全屏视频广告位 ID（1 开头）
  */
@@ -85,16 +86,26 @@ class InterstitialAdLoader(private val adUnitId: String) {
     /**
      * 构建 SDK 交互监听：在 [show] 时绑定到取出的广告对象上，
      * 事件直接转发给本次展示传入的 listener，不随广告对象进入缓存
+     *
+     * [autoReloadOnClose] 为 true 时，在转发关闭事件后自动补位加载下一条广告
      */
     private fun buildInteractionListener(
+        context: Context,
         listener: InterstitialAdEventListener,
+        autoReloadOnClose: Boolean,
     ): TTFullScreenVideoAd.FullScreenVideoAdInteractionListener =
         object : TTFullScreenVideoAd.FullScreenVideoAdInteractionListener {
             override fun onAdShow() = listener.onAdShown()
 
             override fun onAdVideoBarClick() = listener.onAdClicked()
 
-            override fun onAdClose() = listener.onAdClosed()
+            override fun onAdClose() {
+                listener.onAdClosed()
+                if (autoReloadOnClose) {
+                    Log.i(TAG, "广告关闭（已消耗），自动补位加载下一条")
+                    load(context, replenishListener)
+                }
+            }
 
             override fun onVideoComplete() = listener.onVideoCompleted()
 
@@ -109,15 +120,22 @@ class InterstitialAdLoader(private val adUnitId: String) {
      * 交互监听在展示时绑定到该条广告上，事件回调本次展示传入的 listener
      *
      * @param listener 本次展示的事件回调：曝光/点击/关闭/视频完成
+     * @param autoReloadOnClose true 表示广告关闭（已消耗）后自动补位加载下一条，维持缓存水位
      * @return false 表示缓存未命中（尚未 load、已被展示消耗或缓存过期）
      */
-    fun show(activity: Activity, listener: InterstitialAdEventListener): Boolean {
+    fun show(
+        activity: Activity,
+        listener: InterstitialAdEventListener,
+        autoReloadOnClose: Boolean = false,
+    ): Boolean {
         val ad = AdCacheManager.take<TTFullScreenVideoAd>(AdType.INTERSTITIAL)
         if (ad == null) {
             Log.w(TAG, "展示失败：插屏缓存未命中")
             return false
         }
-        ad.setFullScreenVideoAdInteractionListener(buildInteractionListener(listener))
+        ad.setFullScreenVideoAdInteractionListener(
+            buildInteractionListener(activity.applicationContext, listener, autoReloadOnClose),
+        )
         ad.showFullScreenVideoAd(activity)
         return true
     }
@@ -125,18 +143,21 @@ class InterstitialAdLoader(private val adUnitId: String) {
     /**
      * 缓存优先自动展示：命中缓存则立即展示，未命中则自动发起现场加载、加载成功后自动展示
      *
-     * 把"先查缓存、再回退现场加载"的编排沉淀在 Loader 内部，业务方一次调用即可完成展示链路
+     * 把"先查缓存、再回退现场加载"的编排沉淀在 Loader 内部，业务方一次调用即可完成展示链路；
+     * 默认开启关闭后自动补位，形成"展示消耗 → 关闭补位"的缓存水位自维持闭环
      *
      * @param listener 本次展示的事件回调，展示时绑定
+     * @param autoReloadOnClose true 表示广告关闭（已消耗）后自动补位加载下一条，维持缓存水位
      * @param loadListener 未命中时现场加载的结果回调，默认 null 仅内部日志
      * @return true 表示缓存命中已直接展示；false 表示未命中、已启动现场加载，展示结果异步回调
      */
     fun autoShow(
         activity: Activity,
         listener: InterstitialAdEventListener,
+        autoReloadOnClose: Boolean = true,
         loadListener: AdLoadListener? = null,
     ): Boolean {
-        if (show(activity, listener)) {
+        if (show(activity, listener, autoReloadOnClose)) {
             return true
         }
         Log.i(TAG, "缓存未命中，现场加载成功后自动展示")
@@ -148,7 +169,7 @@ class InterstitialAdLoader(private val adUnitId: String) {
 
             override fun onAdLoaded() {
                 loadListener?.onAdLoaded()
-                mainHandler.post { show(activity, listener) }
+                mainHandler.post { show(activity, listener, autoReloadOnClose) }
             }
         })
         return false
@@ -162,5 +183,16 @@ class InterstitialAdLoader(private val adUnitId: String) {
 
     private companion object {
         private const val TAG = "InterstitialAdLoader"
+
+        /** 关闭后自动补位加载的结果回调：后台行为，仅打日志，不对业务暴露 */
+        private val replenishListener = object : AdLoadListener {
+            override fun onAdError(error: AdError) {
+                Log.w(TAG, "关闭后自动补位加载失败: $error")
+            }
+
+            override fun onAdLoaded() {
+                Log.i(TAG, "关闭后自动补位加载成功，缓存水位已恢复")
+            }
+        }
     }
 }
