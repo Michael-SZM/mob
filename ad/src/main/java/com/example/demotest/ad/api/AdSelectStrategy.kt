@@ -1,10 +1,4 @@
-package com.example.demotest.ad
-
-import android.util.Log
-import com.bytedance.sdk.openadsdk.CSJSplashAd
-import com.bytedance.sdk.openadsdk.TTFullScreenVideoAd
-import com.bytedance.sdk.openadsdk.TTNativeExpressAd
-import com.bytedance.sdk.openadsdk.TTRewardVideoAd
+package com.example.demotest.ad.api
 
 /**
  * 广告选择策略
@@ -16,6 +10,7 @@ import com.bytedance.sdk.openadsdk.TTRewardVideoAd
  * val newest = AdSelectStrategy { candidates -> candidates.lastOrNull() }
  * ```
  *
+ * 与平台无关：候选为协议广告对象 [IAd]，出价 [AdCandidate.ecpm] 由各平台适配器包装时提供。
  * 生效路径：AdConfig.selectStrategy 配置全局默认（初始化时注入 [AdCacheManager]），
  * Loader 的 show/attach 传入 strategy 可按次覆盖。
  */
@@ -46,32 +41,10 @@ fun interface AdSelectStrategy {
  *
  * 由缓存管理器在取用时生成（构造器 internal，策略实现只读不构造）
  *
- * @param ad 缓存的广告对象（TTRewardVideoAd / TTFullScreenVideoAd / CSJSplashAd / TTNativeExpressAd）
- * @param ecpm 入缓存时提取的广告最优出价（单位：分），来源 mediationManager.bestEcpm.ecpm；读取不到时为 null
+ * @param ad 缓存的协议广告对象（[IAd] 子类型），各平台 SDK 广告对象经适配器包装后进入缓存
+ * @param ecpm 入缓存时快照的最优出价（单位：分）；平台读取不到时为 null
  */
 class AdCandidate internal constructor(
-    val ad: Any,
+    val ad: IAd,
     val ecpm: Double?,
 )
-
-/**
- * 尝试提取广告对象的最优出价
- *
- * 来源：GroMore 聚合管理器 mediationManager.bestEcpm.ecpm（原始值为字符串，此处转为数值比较）；
- * 非聚合渠道、自定义 ADN 等场景可能读取不到，提取失败返回 null，不阻断缓存流程
- */
-internal fun extractEcpmOrNull(ad: Any): Double? = runCatching {
-    val rawEcpm = when (ad) {
-        is TTRewardVideoAd -> ad.mediationManager?.bestEcpm?.ecpm
-        is TTFullScreenVideoAd -> ad.mediationManager?.bestEcpm?.ecpm
-        is CSJSplashAd -> ad.mediationManager?.bestEcpm?.ecpm
-        is TTNativeExpressAd -> ad.mediationManager?.bestEcpm?.ecpm
-        else -> null
-    }
-    rawEcpm?.trim()?.takeIf { it.isNotEmpty() }?.toDoubleOrNull()
-}.getOrElse { throwable ->
-    Log.w(TAG, "读取广告出价失败: ${throwable.message}")
-    null
-}
-
-private const val TAG = "AdSelectStrategy"

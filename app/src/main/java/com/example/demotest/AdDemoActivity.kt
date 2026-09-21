@@ -2,57 +2,76 @@ package com.example.demotest
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
-import com.example.demotest.ad.AdCacheManager
-import com.example.demotest.ad.AdConfig
-import com.example.demotest.ad.AdEventListener
-import com.example.demotest.ad.AdError
-import com.example.demotest.ad.AdLoadListener
-import com.example.demotest.ad.AdSelectStrategy
-import com.example.demotest.ad.AdType
-import com.example.demotest.ad.BannerAdLoader
-import com.example.demotest.ad.GroMoreAdManager
-import com.example.demotest.ad.InterstitialAdEventListener
-import com.example.demotest.ad.InterstitialAdLoader
-import com.example.demotest.ad.RewardedAdEventListener
-import com.example.demotest.ad.RewardedAdLoader
-import com.example.demotest.ad.SplashAdEventListener
-import com.example.demotest.ad.SplashAdLoader
+import com.example.demotest.ad.api.AdCacheManager
+import com.example.demotest.ad.api.AdConfig
+import com.example.demotest.ad.api.AdEventListener
+import com.example.demotest.ad.api.AdError
+import com.example.demotest.ad.api.AdLoadListener
+import com.example.demotest.ad.api.AdLogger
+import com.example.demotest.ad.api.AdSelectStrategy
+import com.example.demotest.ad.api.AdsManager
+import com.example.demotest.ad.api.AdType
+import com.example.demotest.ad.api.BannerAdLoader
+import com.example.demotest.ad.api.InterstitialAdEventListener
+import com.example.demotest.ad.api.InterstitialAdLoader
+import com.example.demotest.ad.api.RewardedAdEventListener
+import com.example.demotest.ad.api.RewardedAdLoader
+import com.example.demotest.ad.api.SplashAdEventListener
+import com.example.demotest.ad.api.SplashAdLoader
+import com.example.demotest.ad.gromore.GroMorePlatform
 import com.example.demotest.databinding.ActivityAdDemoBinding
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * GroMore 广告加载演示页
+ * 广告加载演示页
  *
- * 演示 :ad 模块的完整接入链路：初始化 SDK → 预加载/按类型加载广告（经 AdCacheManager 缓存）
+ * 演示 :ad 模块改造后的完整接入链路：经 [AdsManager] 门面初始化多平台并创建加载器
+ * → 预加载/按类型加载广告（一次请求 = 竞价 × 瀑布流双管道赛跑，比价取 ecpm 最高者入缓存）
  * → 展示时缓存优先命中、未命中回退现场加载 → 全屏广告消耗后自动补位预加载。
- * 广告位 ID 默认为空占位，点击按钮会走本地前置校验并输出提示；
- * 替换为穿山甲 GroMore 后台申请的真实 ID 后即可体验完整广告流程。
+ * 业务代码只依赖 api 包的协议类型：GroMore 与 MockA/MockB（演示用）都只是
+ * [AdConfig] 中注入的平台适配器实现，更换或新增平台业务代码零改动。
+ * :ad 模块全链路日志经 [AdLogger] 同时输出到 Logcat 与页面日志区，
+ * 可直观观察各平台出价、双管道比价与竞得结果。
+ * GroMore 广告位 ID 默认为空占位（自动跳过、不参与赛跑），
+ * 替换为穿山甲后台申请的真实 ID 后即可参与竞价。
  */
 class AdDemoActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityAdDemoBinding
 
-    private val rewardedLoader =
-        RewardedAdLoader(DEMO_AD_CONFIG.rewardedAdUnitId, rewardName = "金币", rewardAmount = 1)
-    private val interstitialLoader = InterstitialAdLoader(DEMO_AD_CONFIG.interstitialAdUnitId)
-    private val splashLoader = SplashAdLoader(DEMO_AD_CONFIG.splashAdUnitId)
-    private val bannerLoader = BannerAdLoader(DEMO_AD_CONFIG.bannerAdUnitId)
+    // 加载器经门面创建，必须懒初始化：字段初始化早于 onCreate 中的 AdsManager.init；
+    // 广告位 ID 按平台传入映射（GroMore 空串占位会被自动跳过，仅 Mock 平台参与）
+    private val rewardedLoader by lazy {
+        AdsManager.createRewardedLoader(DEMO_REWARDED_UNIT_IDS, rewardName = "金币", rewardAmount = 1)
+    }
+    private val interstitialLoader by lazy { AdsManager.createInterstitialLoader(DEMO_INTERSTITIAL_UNIT_IDS) }
+    private val splashLoader by lazy { AdsManager.createSplashLoader(DEMO_SPLASH_UNIT_IDS) }
+    private val bannerLoader by lazy { AdsManager.createBannerLoader(DEMO_BANNER_UNIT_IDS) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityAdDemoBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 实际项目中请在用户同意隐私协议后再初始化广告 SDK，满足合规要求
-        appendLog("开始初始化 GroMore SDK（appId=$DEMO_APP_ID）...")
-        GroMoreAdManager.init(this, DEMO_AD_CONFIG) { result ->
+        // 日志模块接入：把 :ad 模块全链路日志同时输出到 Logcat 与页面日志区，方便调试
+        AdLogger.minLevel = AdLogger.Level.VERBOSE
+        AdLogger.printer = AdLogger.Printer { level, tag, message, throwable ->
+            Log.println(level.toLogcatPriority(), tag, message + (throwable?.let { ": $it" } ?: ""))
+            postLog("[${level.label}][$tag] $message")
+        }
+
+        // 实际项目中请在用户同意隐私协议后再初始化广告 SDK，满足合规要求；
+        // 业务方只依赖门面与协议，GroMore/MockA/MockB 均在此作为平台适配器注入（更换平台只改这一行）
+        appendLog("开始初始化广告平台（GroMore + MockA + MockB）...")
+        AdsManager.init(this, DEMO_AD_CONFIG) { result ->
             result
-                .onSuccess { postLog("GroMore SDK 初始化成功，可发起广告请求") }
-                .onFailure { postLog("GroMore SDK 初始化失败: ${it.message}") }
+                .onSuccess { postLog("广告平台初始化成功，可发起广告请求") }
+                .onFailure { postLog("广告平台初始化失败: ${it.message}") }
         }
 
         // 激励视频扩容到 2 条：配合连续预加载实现"展示一条、备一条"的缓存水位
@@ -222,6 +241,16 @@ class AdDemoActivity : AppCompatActivity() {
         binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) }
     }
 
+    /** AdLogger 级别 → Logcat 优先级映射（自定义 printer 中转发到 Logcat 用） */
+    private fun AdLogger.Level.toLogcatPriority(): Int = when (this) {
+        AdLogger.Level.VERBOSE -> Log.VERBOSE
+        AdLogger.Level.DEBUG -> Log.DEBUG
+        AdLogger.Level.INFO -> Log.INFO
+        AdLogger.Level.WARN -> Log.WARN
+        AdLogger.Level.ERROR -> Log.ERROR
+        AdLogger.Level.NONE -> Log.INFO
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         // 释放各加载器持有的广告对象，避免泄漏
@@ -239,18 +268,54 @@ class AdDemoActivity : AppCompatActivity() {
         private const val DEMO_APP_ID = "5205181"
 
         /**
-         * TODO: 广告位 ID 均为空占位，请替换为 GroMore 后台创建的广告位 ID（1 开头）
+         * TODO: GroMore 广告位 ID 均为空占位，请替换为 GroMore 后台创建的广告位 ID（1 开头）；
+         * 留空时 GroMore 平台自动跳过、不参与本次竞价与瀑布流
+         */
+        private const val DEMO_SPLASH_ID = ""
+        private const val DEMO_REWARDED_ID = ""
+        private const val DEMO_INTERSTITIAL_ID = ""
+        private const val DEMO_BANNER_ID = ""
+
+        /** GroMore 平台适配器：真实 SDK 接入（广告位 ID 留空占位） */
+        private val groMorePlatform = GroMorePlatform(appId = DEMO_APP_ID, appName = "DemoTest", debug = true)
+
+        /**
+         * Mock 平台 A/B：仅实现 api 协议、无真实 SDK，演示"多平台同时接入 + 双管道比价"；
+         * baseEcpm 模拟多家平台出价差异（MockA 30 分 / MockB 45 分，每次请求 0~15 分浮动），
+         * latencyMs 模拟请求耗时差异（MockB 更慢，便于观察瀑布流等待与回退）
+         */
+        private val mockPlatformA = MockAdPlatform(platformName = "MockA", baseEcpm = 30.0, latencyMs = 300)
+        private val mockPlatformB = MockAdPlatform(platformName = "MockB", baseEcpm = 45.0, latencyMs = 700)
+
+        /**
+         * 通用配置：注入平台适配器列表与缓存取用策略
+         * （列表顺序即瀑布流优先级：GroMore → MockA → MockB；缓存默认先进先出）
          */
         private val DEMO_AD_CONFIG = AdConfig(
-            appId = DEMO_APP_ID,
-            appName = "DemoTest",
-            debug = true,
-            splashAdUnitId = "",
-            rewardedAdUnitId = "",
-            interstitialAdUnitId = "",
-            bannerAdUnitId = "",
-            // 缓存取用策略：默认先进先出；改为 AdSelectStrategy.HighestEcpm 即全局按出价最高取用
+            platforms = listOf(groMorePlatform, mockPlatformA, mockPlatformB),
             selectStrategy = AdSelectStrategy.Fifo,
+        )
+
+        /** 各类型广告的平台 → 广告位 ID 映射：键为平台实例，值为该平台自己的代码位 ID */
+        private val DEMO_REWARDED_UNIT_IDS = mapOf(
+            groMorePlatform to DEMO_REWARDED_ID,
+            mockPlatformA to "mock-rewarded-a",
+            mockPlatformB to "mock-rewarded-b",
+        )
+        private val DEMO_INTERSTITIAL_UNIT_IDS = mapOf(
+            groMorePlatform to DEMO_INTERSTITIAL_ID,
+            mockPlatformA to "mock-interstitial-a",
+            mockPlatformB to "mock-interstitial-b",
+        )
+        private val DEMO_SPLASH_UNIT_IDS = mapOf(
+            groMorePlatform to DEMO_SPLASH_ID,
+            mockPlatformA to "mock-splash-a",
+            mockPlatformB to "mock-splash-b",
+        )
+        private val DEMO_BANNER_UNIT_IDS = mapOf(
+            groMorePlatform to DEMO_BANNER_ID,
+            mockPlatformA to "mock-banner-a",
+            mockPlatformB to "mock-banner-b",
         )
     }
 }

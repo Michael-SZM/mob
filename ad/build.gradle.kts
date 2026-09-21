@@ -36,8 +36,9 @@ android {
 }
 
 dependencies {
-    // GroMore 融合 SDK：api 方式透出，宿主可直接访问 SDK 原生类型
-    api(libs.pangle.ads.sdk)
+    // GroMore 融合 SDK：以 implementation 隔离，宿主只能访问本模块的协议类型（api 包），
+    // 无法直接依赖具体广告 SDK，从而支持横向替换/新增广告平台
+    implementation(libs.pangle.ads.sdk)
     // 官方工程配置要求：SDK 下载库依赖项
     implementation(libs.okhttp)
     implementation(libs.androidx.appcompat)

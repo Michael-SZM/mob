@@ -1,4 +1,4 @@
-package com.example.demotest.ad
+package com.example.demotest.ad.api
 
 /**
  * 广告类型：缓存管理与加载重试等横切能力的统一维度

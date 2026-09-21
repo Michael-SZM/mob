@@ -1,12 +1,11 @@
-package com.example.demotest.ad
+package com.example.demotest.ad.api
 
 import android.os.SystemClock
-import android.util.Log
 
 /**
  * 广告缓存管理器
  *
- * 按 [AdType] 维度缓存"已加载成功、尚未展示"的广告对象，配合各 Loader 使用：
+ * 按 [AdType] 维度缓存“已加载成功、尚未展示”的协议广告对象（[IAd]，由各平台适配器包装产出），配合各 Loader 使用：
  * 加载成功后 [put] 入缓存，展示时 [take]/[peek] 取出，从而把"用户触发时现场加载"
  * 提前为"后台预加载、触发时直接命中"，提升广告加载（触达）成功率。
  *
@@ -22,8 +21,8 @@ import android.util.Log
  */
 object AdCacheManager {
 
-    /** 单条缓存条目：广告对象、过期时间戳与入缓存时提取的最优出价 */
-    private class CacheEntry(val ad: Any, val expireAtMillis: Long, val ecpm: Double?) {
+    /** 单条缓存条目：协议广告对象、过期时间戳与入缓存时快照的最优出价 */
+    private class CacheEntry(val ad: IAd, val expireAtMillis: Long, val ecpm: Double?) {
         val isExpired: Boolean get() = SystemClock.elapsedRealtime() >= expireAtMillis
     }
 
@@ -44,15 +43,15 @@ object AdCacheManager {
     /**
      * 缓存一条加载成功的广告对象，超出容量时淘汰最早缓存的条目
      */
-    fun put(type: AdType, ad: Any) {
+    fun put(type: AdType, ad: IAd) {
         synchronized(lock) {
             val queue = caches.getOrPut(type) { ArrayDeque() }
-            // 入缓存时提取出价，供“出价最高”等策略在取用时比较（读取不到为 null）
-            queue.addLast(CacheEntry(ad, SystemClock.elapsedRealtime() + expireOf(type), extractEcpmOrNull(ad)))
+            // 入缓存时快照出价，供“出价最高”等策略在取用时比较（平台读取不到为 null）
+            queue.addLast(CacheEntry(ad, SystemClock.elapsedRealtime() + expireOf(type), ad.ecpm))
             while (queue.size > maxSizeOf(type)) {
                 queue.removeFirst()
             }
-            Log.i(TAG, "广告入缓存: type=${type.name}, 当前${queue.size}条")
+            AdLogger.i(TAG, "广告入缓存: type=${type.name}, ecpm=${ad.ecpm ?: "无"}, 当前${queue.size}条")
         }
     }
 
@@ -64,7 +63,7 @@ object AdCacheManager {
      * @param strategy 本次取用的覆盖策略，null 表示使用全局默认策略（见 [setDefaultStrategy]）
      * @return null 表示无有效缓存（尚未 load、已被展示消耗或缓存过期）
      */
-    fun <T : Any> take(type: AdType, strategy: AdSelectStrategy? = null): T? {
+    fun <T : IAd> take(type: AdType, strategy: AdSelectStrategy? = null): T? {
         return synchronized(lock) {
             val queue = caches[type] ?: return@synchronized null
             val entry = selectEntryLocked(queue, type, strategy) ?: return@synchronized null
@@ -81,7 +80,7 @@ object AdCacheManager {
      * @param strategy 本次取用的覆盖策略，null 表示使用全局默认策略（见 [setDefaultStrategy]）
      * @return null 表示无有效缓存或渲染尚未完成
      */
-    fun <T : Any> peek(type: AdType, strategy: AdSelectStrategy? = null): T? {
+    fun <T : IAd> peek(type: AdType, strategy: AdSelectStrategy? = null): T? {
         return synchronized(lock) {
             val queue = caches[type] ?: return@synchronized null
             val entry = selectEntryLocked(queue, type, strategy) ?: return@synchronized null
@@ -93,7 +92,7 @@ object AdCacheManager {
     /**
      * 移除某类型全部缓存并返回其中未过期的广告对象，供业务方释放 SDK 资源
      */
-    fun <T : Any> remove(type: AdType): List<T> {
+    fun <T : IAd> remove(type: AdType): List<T> {
         return synchronized(lock) {
             val queue = caches.remove(type) ?: return@synchronized emptyList()
             queue.filterNot { it.isExpired }.map { entry ->
@@ -106,7 +105,7 @@ object AdCacheManager {
     /** 清空全部类型的缓存 */
     fun clear() {
         synchronized(lock) { caches.clear() }
-        Log.i(TAG, "广告缓存已全部清空")
+        AdLogger.i(TAG, "广告缓存已全部清空")
     }
 
     /** 清理所有类型的过期条目 */
@@ -173,17 +172,17 @@ object AdCacheManager {
         val candidates = queue.map { AdCandidate(it.ad, it.ecpm) }
         val selected = effectiveStrategy.select(candidates)
         if (selected == null) {
-            Log.i(TAG, "策略未选中候选: type=${type.name}, 候选${candidates.size}条")
+            AdLogger.i(TAG, "策略未选中候选: type=${type.name}, 候选${candidates.size}条")
             return null
         }
         // 策略应返回候选之一（AdCandidate 构造器 internal，模块外无法伪造）；
         // 防御性处理：异常实现返回列表外对象时回退为最早一条
         val index = candidates.indexOfFirst { it === selected }
         if (index < 0) {
-            Log.w(TAG, "策略返回的候选不在当前候选中，回退为最早一条: type=${type.name}")
+            AdLogger.w(TAG, "策略返回的候选不在当前候选中，回退为最早一条: type=${type.name}")
             return queue.first()
         }
-        Log.i(TAG, "策略选中缓存: type=${type.name}, 第${index + 1}/${candidates.size}条, ecpm=${queue[index].ecpm}")
+        AdLogger.i(TAG, "策略选中缓存: type=${type.name}, 第${index + 1}/${candidates.size}条, ecpm=${queue[index].ecpm}")
         return queue[index]
     }
 
@@ -193,7 +192,7 @@ object AdCacheManager {
         while (iterator.hasNext()) {
             if (iterator.next().isExpired) {
                 iterator.remove()
-                Log.i(TAG, "丢弃过期缓存: type=${type.name}")
+                AdLogger.i(TAG, "丢弃过期缓存: type=${type.name}")
             }
         }
     }

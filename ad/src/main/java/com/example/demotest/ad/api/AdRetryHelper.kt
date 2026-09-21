@@ -1,8 +1,7 @@
-package com.example.demotest.ad
+package com.example.demotest.ad.api
 
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 
 /**
  * 广告加载失败自动重试编排
@@ -30,7 +29,7 @@ internal class AdRetryHelper(
             return false
         }
         retryCount++
-        Log.i(TAG, "${retryIntervalMs}ms 后自动重试（第 $retryCount/$maxRetryCount 次）")
+        AdLogger.i(TAG, "${retryIntervalMs}ms 后自动重试（第 $retryCount/$maxRetryCount 次）")
         handler.postDelayed(retry, retryIntervalMs)
         return true
     }

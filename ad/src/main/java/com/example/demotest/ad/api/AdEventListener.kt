@@ -1,4 +1,4 @@
-package com.example.demotest.ad
+package com.example.demotest.ad.api
 
 /**
  * 通用广告加载结果回调，所有方法均提供默认空实现，业务方按需覆写
